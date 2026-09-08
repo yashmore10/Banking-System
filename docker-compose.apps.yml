@@ -1,0 +1,94 @@
+services:
+  account-service:
+    build:
+      context: .
+      args:
+        SERVICE: account-service
+    environment:
+      MYSQL_URL: jdbc:mysql://host.docker.internal:3306/account_db?createDatabaseIfNotExist=true
+      MYSQL_USERNAME: ${MYSQL_USERNAME:-root}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-http://localhost:8080}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@bank.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports:
+      - "8081:8081"
+    networks:
+      - banking-network
+
+  transaction-service:
+    build:
+      context: .
+      args:
+        SERVICE: transaction-service
+    environment:
+      MYSQL_URL: jdbc:mysql://host.docker.internal:3306/transaction_db?createDatabaseIfNotExist=true
+      MYSQL_USERNAME: ${MYSQL_USERNAME:-root}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      REDIS_HOST: redis
+      ACCOUNT_SERVICE_URL: http://account-service:8081
+      PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-http://localhost:8080}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    depends_on:
+      - account-service
+    ports:
+      - "8082:8082"
+    networks:
+      - banking-network
+
+  fraud-detection-service:
+    build:
+      context: .
+      args:
+        SERVICE: fraud-detection-service
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      REDIS_HOST: redis
+      ACCOUNT_SERVICE_URL: http://account-service:8081
+    depends_on:
+      - account-service
+    ports:
+      - "8084:8084"
+    networks:
+      - banking-network
+
+  notification-service:
+    build:
+      context: .
+      args:
+        SERVICE: notification-service
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    ports:
+      - "8085:8085"
+    networks:
+      - banking-network
+
+  api-gateway:
+    build:
+      context: .
+      args:
+        SERVICE: api-gateway
+    environment:
+      REDIS_HOST: redis
+      ACCOUNT_SERVICE_URL: http://account-service:8081
+      TRANSACTION_SERVICE_URL: http://transaction-service:8082
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+    depends_on:
+      - account-service
+      - transaction-service
+    ports:
+      - "8080:8080"
+    networks:
+      - banking-network
+
+networks:
+  banking-network:
+    external: true
+    name: ${BANKING_NETWORK_NAME:-banking-system_banking-network}
